@@ -204,6 +204,11 @@ class KextExtractor:
         # Make sure we have the right folders in there
         mp = self.d.get_mount_point(disk)
         k_f = os.path.join(mp, "EFI", "CLOVER", "kexts")
+        if not os.path.exists(k_f):
+            self.qprint("No kexts folder at {}!  Aborting!".format(k_f), quiet)
+            if not mounted:
+                self.d.unmount_partition(disk)
+            return False
         f_d = [x for x in os.listdir(k_f) if os.path.isdir(os.path.join(k_f, x))]
         # Create a temp folder
         temp = tempfile.mkdtemp()
