@@ -22,7 +22,9 @@ class KextExtractor:
             self.settings = {
                 # Default settings here
                 "archive" : False,
-                "full" : False
+                "full" : False,
+                "efi" : None,
+                "kexts" : None
             }
         # Flush the settings to start
         self.flush_settings()
@@ -284,8 +286,58 @@ class KextExtractor:
             self.get_folder()
         return kexts
 
+    def default_folder(self):
+        self.u.head()
+        print(" ")
+        print("Q. Quit")
+        print("M. Main Menu")
+        print(" ")
+        kexts = self.u.grab("Please drag and drop a default folder containing kexts:  ")
+        if kexts.lower() == "q":
+            self.u.custom_quit()
+        elif kexts.lower() == "m":
+            return self.settings["kexts"]
+        kexts = self.u.check_path(kexts)
+        if not kexts:
+            self.u.grab("Folder doesn't exist!", timeout=5)
+            return self.default_folder()
+        return kexts
+
+    def default_disk(self):
+        self.d.update()
+        clover = self.get_uuid_from_bdmesg()
+        self.u.resize(80, 24)
+        self.u.head("Select Default Disk")
+        print(" ")
+        print("1. None")
+        print("2. Boot Disk")
+        if clover:
+            print("3. Booted Clover")
+        print(" ")
+        print("M. Main Menu")
+        print("Q. Quit")
+        print(" ")
+        menu = self.u.grab("Please pick a default disk:  ")
+        if not len(menu):
+            return self.default_disk()
+        menu = menu.lower()
+        if menu in ["1","2"]:
+            return [None, "boot"][int(menu)-1]
+        elif menu == "3" and clover:
+            return "clover"
+        elif menu == "m":
+            return self.settings["efi"]
+        elif menu == "q":
+            self.u.custom_quit()
+        return self.default_disk()
+
     def main(self):
-        efi = kexts = None
+        efi = self.settings.get("efi", None)
+        if efi == "clover":
+            efi = self.d.get_identifier(self.get_uuid_from_bdmesg())
+        elif efi == "boot":
+            efi = "/"
+        kexts = self.settings.get("kexts", None)
         while True:
             self.u.head("Kext Extractor")
             print(" ")
@@ -295,9 +347,12 @@ class KextExtractor:
             print(" ")
             print("1. Select EFI")
             print("2. Select Kext Folder")
-            print("3. Toggle Archive")
             print(" ")
-            print("4. Extract")
+            print("3. Toggle Archive")
+            print("4. Pick Default EFI")
+            print("5. Pick Default Kext Folder")
+            print(" ")
+            print("6. Extract")
             print(" ")
             print("Q. Quit")
             print(" ")
@@ -319,6 +374,18 @@ class KextExtractor:
                 self.settings["archive"] = not arch
                 self.flush_settings()
             elif menu == "4":
+                efi = self.default_disk()
+                self.settings["efi"] = efi
+                if efi == "clover":
+                    efi = self.d.get_identifier(self.get_uuid_from_bdmesg())
+                elif efi == "boot":
+                    efi = self.d.get_identifier("/")
+                self.flush_settings()
+            elif menu == "5":
+                kexts = self.default_folder()
+                self.settings["kexts"] = kexts
+                self.flush_settings()
+            elif menu == "6":
                 if not efi:
                     efi = self.get_efi()
                 if not efi:
