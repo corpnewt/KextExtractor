@@ -21,11 +21,11 @@ Starting the script with no arguments will open it in interactive mode.
 
 If you want it to auto extract & copy, you can pass pairs of arguments to it like so (assumes you have a Kexts folder on the Desktop, and plan to extract it to the boot drive's EFI):
 
-    ./CloverExtractor.command ~/Desktop/Kexts /
+    ./KextExtractor.command ~/Desktop/Kexts /
     
 You can also pass multiple sets of argument pairs to extract multiple Kexts folders to EFIs.  With our above example, if we also wanted to extract that same folder to `disk5`'s EFI, we could do:
 
-    ./CloverExtractor.command ~/Desktop/Kexts / ~/Desktop/Kexts disk5
+    ./KextExtractor.command ~/Desktop/Kexts / ~/Desktop/Kexts disk5
 
 ***
 
