@@ -1,4 +1,4 @@
-# CloverExtractor
+# KextExtractor
 Small py script to extract kext files from a target folder and copy them to a target drive's EFI partition.
 
 ***
