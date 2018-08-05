@@ -14,7 +14,6 @@ class KextExtractor:
         self.script_folder = "Scripts"
         self.settings_file = os.path.join("Scripts", "settings.json")
         self.bdmesg = self.get_binary("bdmesg")
-        self.full = False
         cwd = os.getcwd()
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         if self.settings_file and os.path.exists(self.settings_file):
@@ -22,7 +21,8 @@ class KextExtractor:
         else:
             self.settings = {
                 # Default settings here
-                "archive" : False
+                "archive" : False,
+                "full" : False
             }
         # Flush the settings to start
         self.flush_settings()
@@ -92,7 +92,7 @@ class KextExtractor:
         clover = self.get_uuid_from_bdmesg()
         i = 0
         disk_string = ""
-        if not self.full:
+        if not self.settings.get("full", False):
             clover_disk = self.d.get_parent(clover)
             mounts = self.d.get_mounted_volume_dicts()
             for d in mounts:
@@ -125,7 +125,7 @@ class KextExtractor:
         self.u.head()
         print(" ")
         print(disk_string)
-        if not self.full:
+        if not self.settings.get("full", False):
             print("S. Switch to Full Output")
         else:
             print("S. Switch to Slim Output")
@@ -146,7 +146,9 @@ class KextExtractor:
         elif menu.lower() == "m":
             return None
         elif menu.lower() == "s":
-            self.full ^= True
+            full = self.settings.get("full", False)
+            self.settings["full"] = not full
+            self.flush_settings()
             return self.get_efi()
         elif menu.lower() == "b":
             return self.d.get_efi("/")
@@ -245,7 +247,7 @@ class KextExtractor:
                     # Remove, and replace here
                     # Check if we're archiving - and zip if need be
                     if self.settings.get("archive", False):
-                        self.qprint("   Archiving...")
+                        self.qprint("   Archiving...", quiet)
                         zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(os.path.basename(k), datetime.datetime.now())
                         args = [
                             "zip",
@@ -265,24 +267,70 @@ class KextExtractor:
         if not mounted:
             self.d.unmount_partition(disk)
 
+    def get_folder(self):
+        self.u.head()
+        print(" ")
+        print("Q. Quit")
+        print("M. Main Menu")
+        print(" ")
+        kexts = self.u.grab("Please drag and drop a folder containing kexts to copy:  ")
+        if kexts.lower() == "q":
+            self.u.custom_quit()
+        elif kexts.lower() == "m":
+            return None
+        kexts = self.u.check_path(kexts)
+        if not kexts:
+            self.u.grab("Folder doesn't exist!", timeout=5)
+            self.get_folder()
+        return kexts
+
     def main(self):
+        efi = kexts = None
         while True:
-            efi = self.get_efi()
-            if not efi:
-                self.u.custom_quit()
-            
             self.u.head("Kext Extractor")
             print(" ")
-            print("Target EFI:  "+efi)
+            print("Target EFI:    "+str(efi))
+            print("Target Folder: "+str(kexts))
+            print("Archive:       "+str(self.settings.get("archive", False)))
             print(" ")
-            fold = self.u.grab("Please drag and drop a folder containing kexts to copy:  ")
-            fold = self.u.check_path(fold)
-            if not fold:
-                print("Folder doesn't exist!")
-                exit()
-            # Got folder and EFI - let's do something...
-            self.mount_and_copy(efi, fold, False)
-            self.u.grab("\nPress [enter] to return...")
+            print("1. Select EFI")
+            print("2. Select Kext Folder")
+            print("3. Toggle Archive")
+            print(" ")
+            print("4. Extract")
+            print(" ")
+            print("Q. Quit")
+            print(" ")
+            menu = self.u.grab("Please select an option:  ")
+            if not len(menu):
+                continue
+            menu = menu.lower()
+            if menu == "q":
+                self.u.custom_quit()
+            elif menu == "1":
+                efi = self.get_efi()
+            elif menu == "2":
+                k = self.get_folder()
+                if not k:
+                    continue
+                kexts = k
+            elif menu == "3":
+                arch = self.settings.get("archive", False)
+                self.settings["archive"] = not arch
+                self.flush_settings()
+            elif menu == "4":
+                if not efi:
+                    efi = self.get_efi()
+                if not efi:
+                    continue
+                if not kexts:
+                    k = self.get_folder()
+                    if not k:
+                        continue
+                    kexts = k
+                # Got folder and EFI - let's do something...
+                self.mount_and_copy(efi, kexts, False)
+                self.u.grab("\nPress [enter] to return...")
 
     def quiet_copy(self, args):
         # Iterate through the args
