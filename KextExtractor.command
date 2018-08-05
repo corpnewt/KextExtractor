@@ -22,8 +22,10 @@ class KextExtractor:
         else:
             self.settings = {
                 # Default settings here
-                "select_efi_drivers" : True
+                "archive" : False
             }
+        # Flush the settings to start
+        self.flush_settings()
         os.chdir(cwd)
 
     def flush_settings(self):
@@ -241,6 +243,20 @@ class KextExtractor:
                 if os.path.basename(k.lower()) in [x.lower() for x in os.listdir(os.path.join(k_f, f))]:
                     self.qprint("Found {} in {} - removing and replacing...".format(os.path.basename(k), f), quiet)
                     # Remove, and replace here
+                    # Check if we're archiving - and zip if need be
+                    if self.settings.get("archive", False):
+                        self.qprint("   Archiving...")
+                        zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(os.path.basename(k), datetime.datetime.now())
+                        args = [
+                            "zip",
+                            "-r",
+                            os.path.join(k_f, f, zip_name),
+                            os.path.join(k_f, f, os.path.basename(k))
+                        ]
+                        out = self.r.run({"args":args, "stream":False})
+                        if not out[2] == 0:
+                            print("   Couldn't backup {} - skipping!".format(os.path.basename(k)))
+                            continue
                     shutil.rmtree(os.path.join(k_f, f, os.path.basename(k)))
                     shutil.copytree(k, os.path.join(k_f, f, os.path.basename(k)))
 
