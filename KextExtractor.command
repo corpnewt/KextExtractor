@@ -266,7 +266,7 @@ class KextExtractor:
                         if not out[2] == 0:
                             print("   Couldn't backup {} - skipping!".format(os.path.basename(k)))
                             continue
-                    shutil.rmtree(os.path.join(k_f, f, os.path.basename(k)))
+                    shutil.rmtree(os.path.join(k_f, f, os.path.basename(k)), ignore_errors=True)
                     shutil.copytree(k, os.path.join(k_f, f, os.path.basename(k)))
 
         shutil.rmtree(temp, ignore_errors=True)
