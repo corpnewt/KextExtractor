@@ -13,7 +13,6 @@ class KextExtractor:
         # Get the tools we need
         self.script_folder = "Scripts"
         self.settings_file = os.path.join("Scripts", "settings.json")
-        self.bdmesg = self.get_binary("bdmesg")
         cwd = os.getcwd()
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         if self.settings_file and os.path.exists(self.settings_file):
@@ -37,42 +36,6 @@ class KextExtractor:
             json.dump(self.settings, open(self.settings_file, "w"))
             os.chdir(cwd)
 
-    def get_version_from_bdmesg(self):
-        if not self.bdmesg:
-            return None
-        # Get bdmesg output - then parse for SelfDevicePath
-        bdmesg = self.r.run({"args":[self.bdmesg]})[0]
-        if not "Starting Clover revision: " in bdmesg:
-            # Not found
-            return None
-        try:
-            # Split to just the contents of that line
-            rev = bdmesg.split("Starting Clover revision: ")[1].split("on")[0]
-            return rev
-        except:
-            pass
-        return None
-
-    def get_uuid_from_bdmesg(self):
-        if not self.bdmesg:
-            return None
-        # Get bdmesg output - then parse for SelfDevicePath
-        bdmesg = self.r.run({"args":[self.bdmesg]})[0]
-        if not "SelfDevicePath=" in bdmesg:
-            # Not found
-            return None
-        try:
-            # Split to just the contents of that line
-            line = bdmesg.split("SelfDevicePath=")[1].split("\n")[0]
-            # Get the HD section
-            hd   = line.split("HD(")[1].split(")")[0]
-            # Get the UUID
-            uuid = hd.split(",")[2]
-            return uuid
-        except:
-            pass
-        return None
-
     def get_binary(self, name):
         # Check the system, and local Scripts dir for the passed binary
         found = self.r.run({"args":["which", name]})[0].split("\n")[0].split("\r")[0]
@@ -91,7 +54,7 @@ class KextExtractor:
 
     def get_efi(self):
         self.d.update()
-        clover = self.get_uuid_from_bdmesg()
+        clover = bdmesg.get_clover_uuid()
         i = 0
         disk_string = ""
         if not self.settings.get("full", False):
@@ -310,7 +273,7 @@ class KextExtractor:
 
     def default_disk(self):
         self.d.update()
-        clover = self.get_uuid_from_bdmesg()
+        clover = bdmesg.get_clover_uuid()
         self.u.resize(80, 24)
         self.u.head("Select Default Disk")
         print(" ")
@@ -339,7 +302,7 @@ class KextExtractor:
     def main(self):
         efi = self.settings.get("efi", None)
         if efi == "clover":
-            efi = self.d.get_identifier(self.get_uuid_from_bdmesg())
+            efi = self.d.get_identifier(bdmesg.get_clover_uuid())
         elif efi == "boot":
             efi = "/"
         kexts = self.settings.get("kexts", None)
@@ -382,7 +345,7 @@ class KextExtractor:
                 efi = self.default_disk()
                 self.settings["efi"] = efi
                 if efi == "clover":
-                    efi = self.d.get_identifier(self.get_uuid_from_bdmesg())
+                    efi = self.d.get_identifier(bdmesg.get_clover_uuid())
                 elif efi == "boot":
                     efi = self.d.get_identifier("/")
                 self.flush_settings()
