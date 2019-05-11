@@ -168,7 +168,9 @@ class KextExtractor:
         mp = self.d.get_mount_point(disk)
         k_f = os.path.join(mp, "EFI", "CLOVER", "kexts")
         if not os.path.exists(k_f):
-            self.qprint("No kexts folder at {}!  Aborting!".format(k_f), quiet)
+            k_f = os.path.join(mp,"EFI","OC","Kexts")
+        if not os.path.exists(k_f):
+            self.qprint("No kexts folder at {}!  Aborting!".format(mp), quiet)
             if not mounted:
                 self.d.unmount_partition(disk)
             return False
