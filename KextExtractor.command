@@ -167,7 +167,9 @@ class KextExtractor:
         # Make sure we have the right folders in there
         mp = self.d.get_mount_point(disk)
         k_f = os.path.join(mp, "EFI", "CLOVER", "kexts")
+        is_clover = True
         if not os.path.exists(k_f):
+            is_clover = False
             k_f = os.path.join(mp,"EFI","OC","Kexts")
         if not os.path.exists(k_f):
             self.qprint("No kexts folder at {}!  Aborting!".format(mp), quiet)
@@ -212,32 +214,39 @@ class KextExtractor:
         # Install them - let's iterate through all the kexts we have,
         # then copy over what we need
         for k in kexts:
-            # Let's find if it's in any of the other folders
-            for f in f_d:
-                if os.path.basename(k.lower()) in [x.lower() for x in os.listdir(os.path.join(k_f, f))]:
-                    self.qprint("Found {} in {} - removing and replacing...".format(os.path.basename(k), f), quiet)
-                    # Remove, and replace here
-                    # Check if we're archiving - and zip if need be
-                    if self.settings.get("archive", False):
-                        self.qprint("   Archiving...", quiet)
-                        zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(os.path.basename(k), datetime.datetime.now())
-                        args = [
-                            "zip",
-                            "-r",
-                            os.path.join(k_f, f, zip_name),
-                            os.path.join(k_f, f, os.path.basename(k))
-                        ]
-                        out = self.r.run({"args":args, "stream":False})
-                        if not out[2] == 0:
-                            print("   Couldn't backup {} - skipping!".format(os.path.basename(k)))
-                            continue
-                    shutil.rmtree(os.path.join(k_f, f, os.path.basename(k)), ignore_errors=True)
-                    shutil.copytree(k, os.path.join(k_f, f, os.path.basename(k)))
+            if is_clover:
+                # Let's find if it's in any of the other folders
+                for f in f_d:
+                    self.check_kext(k,os.path.join(k_f,f),quiet)
+            else:
+                # Only need to pass the top level folder
+                self.check_kext(k,k_f,quiet)
 
         shutil.rmtree(temp, ignore_errors=True)
         # Unmount if need be
         if not mounted:
             self.d.unmount_partition(disk)
+
+    def check_kext(self,kext,kext_folder,quiet=False):
+        if os.path.basename(kext.lower()) in [x.lower() for x in os.listdir(kext_folder)]:
+            self.qprint("Found {} in {} - removing and replacing...".format(os.path.basename(kext), os.path.basename(kext_folder)), quiet)
+            # Remove, and replace here
+            # Check if we're archiving - and zip if need be
+            if self.settings.get("archive", False):
+                self.qprint("   Archiving...", quiet)
+                zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(os.path.basename(kext), datetime.datetime.now())
+                args = [
+                    "zip",
+                    "-r",
+                    os.path.join(kext_folder, zip_name),
+                    os.path.join(kext_folder, os.path.basename(kext))
+                ]
+                out = self.r.run({"args":args, "stream":False})
+                if not out[2] == 0:
+                    print("   Couldn't backup {} - skipping!".format(os.path.basename(kext)))
+                    return
+            shutil.rmtree(os.path.join(kext_folder, os.path.basename(kext)), ignore_errors=True)
+            shutil.copytree(kext, os.path.join(kext_folder, os.path.basename(kext)))
 
     def get_folder(self):
         self.u.head()
