@@ -167,6 +167,7 @@ class KextExtractor:
         # Make sure we have the right folders in there
         mp = self.d.get_mount_point(disk)
         kexts = []
+        temp = None
         for k_f in (os.path.join(mp, "EFI", "CLOVER", "kexts"), os.path.join(mp,"EFI","OC","Kexts")):
             self.qprint("Checking for {}...".format(k_f),quiet)
             if not os.path.exists(k_f):
@@ -215,7 +216,8 @@ class KextExtractor:
                 for f in f_d:
                     self.check_kext(k,f,quiet)
 
-        shutil.rmtree(temp, ignore_errors=True)
+        if temp:
+            shutil.rmtree(temp, ignore_errors=True)
         # Unmount if need be
         if not mounted:
             self.d.unmount_partition(disk)
