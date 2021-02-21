@@ -54,7 +54,7 @@ class KextExtractor:
 
     def get_efi(self):
         self.d.update()
-        clover = bdmesg.get_clover_uuid()
+        clover = bdmesg.get_bootloader_uuid()
         i = 0
         disk_string = ""
         if not self.settings.get("full", False):
@@ -96,12 +96,12 @@ class KextExtractor:
             print("S. Switch to Slim Output")
         print("B. Select the Boot Drive's EFI")
         if clover:
-            print("C. Select the Booted Clover's EFI")
+            print("C. Select the Booted Clover/OC's EFI")
         print("")
         print("M. Main")
         print("Q. Quit")
         print(" ")
-        print("(* denotes the booted Clover)")
+        print("(* denotes the booted Clover/OC)")
 
         menu = self.u.grab("Pick the drive containing your EFI:  ")
         if not len(menu):
@@ -279,14 +279,14 @@ class KextExtractor:
 
     def default_disk(self):
         self.d.update()
-        clover = bdmesg.get_clover_uuid()
+        clover = bdmesg.get_bootloader_uuid()
         self.u.resize(80, 24)
         self.u.head("Select Default Disk")
         print(" ")
         print("1. None")
         print("2. Boot Disk")
         if clover:
-            print("3. Booted Clover")
+            print("3. Booted Clover/OC")
         print(" ")
         print("M. Main Menu")
         print("Q. Quit")
@@ -308,7 +308,7 @@ class KextExtractor:
     def main(self):
         efi = self.settings.get("efi", None)
         if efi == "clover":
-            efi = self.d.get_identifier(bdmesg.get_clover_uuid())
+            efi = self.d.get_identifier(bdmesg.get_bootloader_uuid())
         elif efi == "boot":
             efi = "/"
         kexts = self.settings.get("kexts", None)
@@ -351,7 +351,7 @@ class KextExtractor:
                 efi = self.default_disk()
                 self.settings["efi"] = efi
                 if efi == "clover":
-                    efi = self.d.get_identifier(bdmesg.get_clover_uuid())
+                    efi = self.d.get_identifier(bdmesg.get_bootloader_uuid())
                 elif efi == "boot":
                     efi = self.d.get_identifier("/")
                 self.flush_settings()
