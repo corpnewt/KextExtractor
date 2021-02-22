@@ -168,46 +168,50 @@ class KextExtractor:
         mp = self.d.get_mount_point(disk)
         kexts = []
         temp = None
+        # We need to parse some lists
+        # First we need to get a list of zips and extract them to the temp folder
+        self.qprint("Gathering files...",quiet)
+        zips = [x for x in os.listdir(package) if not x.startswith(".") and x.lower().endswith(".zip")]
+        if len(zips):
+            self.qprint("\n - Extracting zip files...",quiet)
+            # Create a temp folder
+            temp = tempfile.mkdtemp()
+            for f in zips:
+                ztemp = tempfile.mkdtemp(dir=temp)
+                args = [
+                    "unzip",
+                    os.path.join(package, f),
+                    "-d",
+                    ztemp
+                ]
+                self.qprint(" --> Extracting {}...".format(f), quiet)
+                self.r.run({"args":args, "stream":False})
+            # Let's iterate through the temp dir
+            self.qprint("\n - Walking temp folder...",quiet)
+            for path, subdirs, files in os.walk(temp):
+                for name in subdirs:
+                    if name.lower().endswith(".kext"):
+                        # Save it
+                        self.qprint(" --> {}".format(name),quiet)
+                        kexts.append(os.path.join(path, name))
+        self.qprint("\n - Walking {}".format(package),quiet)
+        for path, subdirs, files in os.walk(package):
+            for name in subdirs:
+                if name.lower().endswith(".kext"):
+                    # Save it
+                    self.qprint(" --> {}".format(name),quiet)
+                    kexts.append(os.path.join(path, name))
+        # Got our lists
+        if not len(kexts):
+            self.qprint("\nNothing to install!", quiet)
+            if temp: shutil.rmtree(temp, ignore_errors=True)
+            return
         for k_f in (os.path.join(mp, "EFI", "CLOVER", "kexts"), os.path.join(mp,"EFI","OC","Kexts")):
-            self.qprint("Checking for {}...".format(k_f),quiet)
+            self.qprint("\nChecking for {}...".format(k_f),quiet)
             if not os.path.exists(k_f):
                 self.qprint(" - Not found!  Skipping...".format(k_f), quiet)
                 continue
             self.qprint(" - Located!  Iterating...",quiet)
-            # Create a temp folder
-            temp = tempfile.mkdtemp()
-            # We need to parse some lists
-            # First we need to get a list of zips and extract them to the temp folder
-            if not len(kexts):
-                for f in os.listdir(package):
-                    if f.lower().endswith(".zip"):
-                        # Got a zip - extract it to the temp folder
-                        ztemp = tempfile.mkdtemp(dir=temp)
-                        args = [
-                            "unzip",
-                            os.path.join(package, f),
-                            "-d",
-                            ztemp
-                        ]
-                        self.qprint(" --> Extracting {}...".format(f), quiet)
-                        self.r.run({"args":args, "stream":False})
-                # Let's iterate through the temp dir
-                for path, subdirs, files in os.walk(temp):
-                    for name in subdirs:
-                        if name.lower().endswith(".kext"):
-                            # Save it
-                            kexts.append(os.path.join(path, name))
-                for path, subdirs, files in os.walk(package):
-                    for name in subdirs:
-                        if name.lower().endswith(".kext"):
-                            # Save it
-                            kexts.append(os.path.join(path, name))
-                # Got our lists
-                if not len(kexts):
-                    self.qprint("Nothing to install!", quiet)
-                    shutil.rmtree(temp, ignore_errors=True)
-                    return
-            
             # Install them - let's iterate through all the kexts we have,
             # then copy over what we need
             f_d = [os.path.join(k_f,x) for x in os.listdir(k_f) if os.path.isdir(os.path.join(k_f, x)) and (x.lower() == "other" or x.startswith("10."))]
@@ -215,9 +219,7 @@ class KextExtractor:
             for k in kexts:
                 for f in f_d:
                     self.check_kext(k,f,quiet)
-
-        if temp:
-            shutil.rmtree(temp, ignore_errors=True)
+        if temp: shutil.rmtree(temp, ignore_errors=True)
         # Unmount if need be
         if not mounted:
             self.d.unmount_partition(disk)
@@ -238,7 +240,7 @@ class KextExtractor:
                 ]
                 out = self.r.run({"args":args, "stream":False})
                 if not out[2] == 0:
-                    print("   Couldn't backup {} - skipping!".format(os.path.basename(kext)))
+                    self.qprint("   Couldn't backup {} - skipping!".format(os.path.basename(kext)),quiet)
                     return
             shutil.rmtree(os.path.join(kext_folder, os.path.basename(kext)), ignore_errors=True)
             shutil.copytree(kext, os.path.join(kext_folder, os.path.basename(kext)))
