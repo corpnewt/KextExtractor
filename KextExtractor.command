@@ -206,31 +206,33 @@ class KextExtractor:
             self.qprint("\nNothing to install!", quiet)
             if temp: shutil.rmtree(temp, ignore_errors=True)
             return
+        self.qprint("", quiet)
         for k_f in (os.path.join(mp, "EFI", "CLOVER", "kexts"), os.path.join(mp,"EFI","OC","Kexts")):
-            self.qprint("\nChecking for {}...".format(k_f),quiet)
+            print("Checking for {}...".format(k_f))
             if not os.path.exists(k_f):
-                self.qprint(" - Not found!  Skipping...".format(k_f), quiet)
+                print(" - Not found!  Skipping...\n".format(k_f))
                 continue
-            self.qprint(" - Located!  Iterating...",quiet)
+            print(" - Located!  Iterating...")
             # Install them - let's iterate through all the kexts we have,
             # then copy over what we need
             f_d = [os.path.join(k_f,x) for x in os.listdir(k_f) if os.path.isdir(os.path.join(k_f, x)) and (x.lower() == "other" or x.startswith("10."))]
             f_d.append(k_f) # Add the original top-level folder
             for k in kexts:
                 for f in f_d:
-                    self.check_kext(k,f,quiet)
+                    self.check_kext(k,f)
+            print("")
         if temp: shutil.rmtree(temp, ignore_errors=True)
         # Unmount if need be
         if not mounted:
             self.d.unmount_partition(disk)
 
-    def check_kext(self,kext,kext_folder,quiet=False):
+    def check_kext(self,kext,kext_folder):
         if os.path.basename(kext.lower()) in [x.lower() for x in os.listdir(kext_folder)]:
-            self.qprint(" --> Found {} in {} - removing and replacing...".format(os.path.basename(kext), os.path.basename(kext_folder)), quiet)
+            print(" --> Found {} in {} - removing and replacing...".format(os.path.basename(kext), os.path.basename(kext_folder)))
             # Remove, and replace here
             # Check if we're archiving - and zip if need be
             if self.settings.get("archive", False):
-                self.qprint("   Archiving...", quiet)
+                print("   Archiving...")
                 zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(os.path.basename(kext), datetime.datetime.now())
                 args = [
                     "zip",
@@ -240,7 +242,7 @@ class KextExtractor:
                 ]
                 out = self.r.run({"args":args, "stream":False})
                 if not out[2] == 0:
-                    self.qprint("   Couldn't backup {} - skipping!".format(os.path.basename(kext)),quiet)
+                    print("   Couldn't backup {} - skipping!".format(os.path.basename(kext)))
                     return
             shutil.rmtree(os.path.join(kext_folder, os.path.basename(kext)), ignore_errors=True)
             shutil.copytree(kext, os.path.join(kext_folder, os.path.basename(kext)))
@@ -373,7 +375,7 @@ class KextExtractor:
                     kexts = k
                 # Got folder and EFI - let's do something...
                 self.mount_and_copy(efi, kexts, False)
-                self.u.grab("\nPress [enter] to return...")
+                self.u.grab("Press [enter] to return...")
 
     def quiet_copy(self, args):
         # Iterate through the args
