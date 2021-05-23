@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # 0.0.0
 from Scripts import *
-import os, tempfile, datetime, shutil, time, plistlib, json, sys, glob
+import os, tempfile, datetime, shutil, time, plistlib, json, sys, glob, argparse
 
 class KextExtractor:
     def __init__(self, **kwargs):
@@ -377,23 +377,33 @@ class KextExtractor:
                 self.mount_and_copy(efi, kexts, False)
                 self.u.grab("Press [enter] to return...")
 
-    def quiet_copy(self, args):
+    def quiet_copy(self, args, explicit_disk = False):
         # Iterate through the args
+        func = self.d.get_identifier if explicit_disk else self.d.get_efi
         arg_pairs = zip(*[iter(args)]*2)
         for pair in arg_pairs:
-            efi = self.d.get_efi(pair[1])
-            if efi:
+            target = func(pair[1])
+            if target:
                 try:
-                    self.mount_and_copy(self.d.get_efi(pair[1]), pair[0], True)
+                    self.mount_and_copy(target, pair[0], True)
                 except Exception as e:
                     print(str(e))
 
 if __name__ == '__main__':
-    c = KextExtractor()
+    # Setup the cli args
+    parser = argparse.ArgumentParser(prog="KextExtractor.command", description="KextExtractor - a py script that extracts and updates kexts.")
+    parser.add_argument("-d", "--explicit-disk", help="treat all mount points/identifiers explicitly without resolving to EFI", action="store_true")
+    parser.add_argument("kexts_and_disks",nargs="*")
+
+    args = parser.parse_args()
+
     # Check for args
-    if len(sys.argv) > 1:
-        # We got command line args!
-        # KextExtractor.command /path/to/kextfolder disk#s# /path/to/other/kextfolder disk#s#
-        c.quiet_copy(sys.argv[1:])
+    if args.kexts_and_disks and len(args.kexts_and_disks) % 2:
+        print("Kext folder and target disk arguments must be in pairs!")
+        exit(1)
+
+    c = KextExtractor()
+    if args.kexts_and_disks:
+        c.quiet_copy(args.kexts_and_disks, explicit_disk=args.explicit_disk)
     else:
         c.main()
