@@ -189,6 +189,7 @@ class KextExtractor:
             # Let's iterate through the temp dir
             self.qprint("\n - Walking temp folder...",quiet)
             for path, subdirs, files in os.walk(temp):
+                if any(x.lower().endswith(".kext") for x in os.path.normpath(temp).split(os.path.sep)): continue
                 for name in subdirs:
                     if name.lower().endswith(".kext"):
                         # Save it
@@ -196,6 +197,7 @@ class KextExtractor:
                         kexts.append(os.path.join(path, name))
         self.qprint("\n - Walking {}".format(package),quiet)
         for path, subdirs, files in os.walk(package):
+            if any(x.lower().endswith(".kext") for x in os.path.normpath(package).split(os.path.sep)): continue
             for name in subdirs:
                 if name.lower().endswith(".kext"):
                     # Save it
@@ -207,45 +209,58 @@ class KextExtractor:
             if temp: shutil.rmtree(temp, ignore_errors=True)
             return
         self.qprint("", quiet)
-        for k_f in (os.path.join(mp, "EFI", "CLOVER", "kexts"), os.path.join(mp,"EFI","OC","Kexts")):
+        clover_path = os.path.join(mp,"EFI","CLOVER")
+        oc_path = os.path.join(mp,"EFI","OC")
+        for clear,k_f in ((clover_path,os.path.join(clover_path,"kexts")), (oc_path,os.path.join(oc_path,"Kexts"))):
             print("Checking for {}...".format(k_f))
             if not os.path.exists(k_f):
                 print(" - Not found!  Skipping...\n".format(k_f))
                 continue
             print(" - Located!  Iterating...")
-            # Install them - let's iterate through all the kexts we have,
-            # then copy over what we need
-            f_d = [os.path.join(k_f,x) for x in os.listdir(k_f) if os.path.isdir(os.path.join(k_f, x)) and (x.lower() == "other" or x.startswith("10."))]
-            f_d.append(k_f) # Add the original top-level folder
-            for k in kexts:
-                for f in f_d:
-                    self.check_kext(k,f)
+            # Let's get a list of installed kexts - we'll want to omit any nested plugins though
+            installed_kexts = {}
+            for path, subdirs, files in os.walk(k_f):
+                if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
+                for name in subdirs:
+                    if name.lower().endswith(".kext"):
+                        if not name.lower() in installed_kexts: installed_kexts[name.lower()] = []
+                        installed_kexts[name.lower()].append(os.path.join(path, name))
+            # Let's walk our new kexts and update as we go
+            for k in sorted(kexts, key=lambda x: x.lower()):
+                k_name = os.path.basename(k)
+                if not k_name.lower() in installed_kexts: continue
+                for path in installed_kexts[k_name.lower()]:
+                    dir_path = os.path.dirname(path)[len(clear):].lstrip("/")
+                    print(" --> Found {} in {} - replacing...".format(k_name,dir_path))
+                    if path.lower() == k.lower():
+                        print(" ----> Source and target paths are the same - skipping!")
+                        continue
+                    # Back up if need be
+                    if self.settings.get("archive", False):
+                        print(" ----> Archiving...")
+                        cwd = os.getcwd()
+                        os.chdir(os.path.dirname(path))
+                        zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(k_name, datetime.datetime.now())
+                        args = ["zip","-r",zip_name,os.path.basename(path)]
+                        out = self.r.run({"args":args, "stream":False})
+                        os.chdir(cwd)
+                        if not out[2] == 0:
+                            print(" ------> Couldn't backup {} - skipping!".format(k_name))
+                            continue
+                    # Replace the kext
+                    try: shutil.rmtree(path, ignore_errors=True)
+                    except:
+                        print(" ----> Could not remove target kext!")
+                        continue
+                    try: shutil.copytree(k,path)
+                    except:
+                        print(" ----> Failed to copy new kext!")
+                        continue
             print("")
         if temp: shutil.rmtree(temp, ignore_errors=True)
         # Unmount if need be
         if not mounted:
             self.d.unmount_partition(disk)
-
-    def check_kext(self,kext,kext_folder):
-        if os.path.basename(kext.lower()) in [x.lower() for x in os.listdir(kext_folder)]:
-            print(" --> Found {} in {} - removing and replacing...".format(os.path.basename(kext), os.path.basename(kext_folder)))
-            # Remove, and replace here
-            # Check if we're archiving - and zip if need be
-            if self.settings.get("archive", False):
-                print("   Archiving...")
-                zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(os.path.basename(kext), datetime.datetime.now())
-                args = [
-                    "zip",
-                    "-r",
-                    os.path.join(kext_folder, zip_name),
-                    os.path.join(kext_folder, os.path.basename(kext))
-                ]
-                out = self.r.run({"args":args, "stream":False})
-                if not out[2] == 0:
-                    print("   Couldn't backup {} - skipping!".format(os.path.basename(kext)))
-                    return
-            shutil.rmtree(os.path.join(kext_folder, os.path.basename(kext)), ignore_errors=True)
-            shutil.copytree(kext, os.path.join(kext_folder, os.path.basename(kext)))
 
     def get_folder(self):
         self.u.head()
@@ -320,15 +335,15 @@ class KextExtractor:
             self.u.head("Kext Extractor")
             print(" ")
             print("Target EFI:    "+str(efi))
-            print("Target Folder: "+str(kexts))
+            print("Source Folder: "+str(kexts))
             print("Archive:       "+str(self.settings.get("archive", False)))
             print(" ")
-            print("1. Select EFI")
-            print("2. Select Kext Folder")
+            print("1. Select Target EFI")
+            print("2. Select Source Kext Folder")
             print(" ")
             print("3. Toggle Archive")
-            print("4. Pick Default EFI")
-            print("5. Pick Default Kext Folder")
+            print("4. Pick Default Target EFI")
+            print("5. Pick Default Source Kext Folder")
             print(" ")
             print("6. Extract")
             print(" ")
