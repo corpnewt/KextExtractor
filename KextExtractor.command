@@ -226,7 +226,7 @@ class KextExtractor:
                         if not name.lower() in installed_kexts: installed_kexts[name.lower()] = []
                         installed_kexts[name.lower()].append(os.path.join(path, name))
             # Let's walk our new kexts and update as we go
-            for k in sorted(kexts, key=lambda x: x.lower()):
+            for k in sorted(kexts, key=lambda x: os.path.basename(x).lower()):
                 k_name = os.path.basename(k)
                 if not k_name.lower() in installed_kexts: continue
                 for path in installed_kexts[k_name.lower()]:
