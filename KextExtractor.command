@@ -469,12 +469,15 @@ if __name__ == '__main__':
 
     c = KextExtractor()
     if args.kexts_and_disks:
-        regex = None
-        if not args.disable_exclude and args.exclude: # Attempt to compile the regex
+        if args.disable_exclude: # Override any regex exclusions
+            regex = None
+        elif args.exclude: # Attempt to compile the regex override
             try: regex = re.compile(args.exclude)
             except:
                 print("Passed regex is invalid!")
                 exit(1)
+        else: # Fall back on the original value
+            regex = c.exclude
         c.quiet_copy(args.kexts_and_disks, explicit_disk=args.explicit_disk, exclude=regex)
     else:
         c.main()
