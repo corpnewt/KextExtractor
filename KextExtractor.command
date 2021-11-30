@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # 0.0.0
 from Scripts import *
-import os, tempfile, datetime, shutil, time, plistlib, json, sys, glob, argparse
+import os, tempfile, datetime, shutil, time, plistlib, json, sys, glob, argparse, re
 
 class KextExtractor:
     def __init__(self, **kwargs):
@@ -10,6 +10,7 @@ class KextExtractor:
         self.u  = utils.Utils("KextExtractor")
         self.clover = None
         self.efi    = None
+        self.exclude = None
         # Get the tools we need
         self.script_folder = "Scripts"
         self.settings_file = os.path.join("Scripts", "settings.json")
@@ -23,8 +24,14 @@ class KextExtractor:
                 "archive" : False,
                 "full" : False,
                 "efi" : None,
-                "kexts" : None
+                "kexts" : None,
+                "exclude": None
             }
+        # Ensure the exclude is valid regex, and that kexts exists
+        try: self.exclude = re.compile(self.settings.get("exclude"))
+        except: pass
+        if self.settings.get("kexts") and not os.path.exists(self.settings["kexts"]):
+            self.settings["kexts"] = None
         # Flush the settings to start
         self.flush_settings()
         os.chdir(cwd)
@@ -33,7 +40,7 @@ class KextExtractor:
         if self.settings_file:
             cwd = os.getcwd()
             os.chdir(os.path.dirname(os.path.realpath(__file__)))
-            json.dump(self.settings, open(self.settings_file, "w"))
+            json.dump(self.settings, open(self.settings_file, "w"), indent=2)
             os.chdir(cwd)
 
     def get_binary(self, name):
@@ -145,7 +152,7 @@ class KextExtractor:
         if not quiet:
             print(message)
 
-    def mount_and_copy(self, disk, package, quiet = False):
+    def mount_and_copy(self, disk, package, quiet = False, exclude = None):
         # Mounts the passed disk and extracts the package target to the destination
         self.d.update()
         if not quiet:
@@ -231,6 +238,10 @@ class KextExtractor:
                 if not k_name.lower() in installed_kexts: continue
                 for path in installed_kexts[k_name.lower()]:
                     dir_path = os.path.dirname(path)[len(clear):].lstrip("/")
+                    if exclude and exclude.match(k_name):
+                        # Excluded - print that we're skipping it
+                        print(" --> Found {} in {} - excluded per regex...".format(k_name,dir_path))
+                        continue
                     print(" --> Found {} in {} - replacing...".format(k_name,dir_path))
                     if path.lower() == k.lower():
                         print(" ----> Source and target paths are the same - skipping!")
@@ -289,7 +300,7 @@ class KextExtractor:
         if kexts.lower() == "q":
             self.u.custom_quit()
         elif kexts.lower() == "m":
-            return self.settings["kexts"]
+            return self.settings.get("kexts",None)
         kexts = self.u.check_path(kexts)
         if not kexts:
             self.u.grab("Folder doesn't exist!", timeout=5)
@@ -319,10 +330,41 @@ class KextExtractor:
         elif menu == "3" and clover:
             return "clover"
         elif menu == "m":
-            return self.settings["efi"]
+            return self.settings.get("efi",None)
         elif menu == "q":
             self.u.custom_quit()
         return self.default_disk()
+
+    def get_regex(self):
+        while True:
+            self.u.head("Exclusion Regex")
+            print("")
+            print("Current Exclusion: {}".format(None if self.exclude is None else self.exclude.pattern))
+            print("")
+            print("Eg: To case-insenitively exclude any kext starting with \"hello\",")
+            print("you can use the following:")
+            print("")
+            print("(?i)hello.*\\.kext")
+            print("")
+            print("C. Clear Exclusions")
+            print("M. Return to Menu")
+            print("Q. Quit")
+            print("")
+            menu = self.u.grab("Please enter the exclusion regex:  ")
+            if not len(menu): continue
+            if menu.lower() == "m": return self.exclude
+            elif menu.lower() == "q": self.u.custom_quit()
+            elif menu.lower() == "c": return None
+            try:
+                regex = re.compile(menu)
+            except Exception as e:
+                self.u.head("Regex Compile Error")
+                print("")
+                print("That regex is not valid:\n\n{}".format(repr(e)))
+                print("")
+                self.u.head("Press [enter] to return...")
+                continue
+            return regex
 
     def main(self):
         efi = self.settings.get("efi", None)
@@ -337,6 +379,7 @@ class KextExtractor:
             print("Target EFI:    "+str(efi))
             print("Source Folder: "+str(kexts))
             print("Archive:       "+str(self.settings.get("archive", False)))
+            print("Exclusion:     {}".format(None if self.exclude is None else self.exclude.pattern))
             print(" ")
             print("1. Select Target EFI")
             print("2. Select Source Kext Folder")
@@ -344,8 +387,9 @@ class KextExtractor:
             print("3. Toggle Archive")
             print("4. Pick Default Target EFI")
             print("5. Pick Default Source Kext Folder")
+            print("6. Set Exclusion Regex")
             print(" ")
-            print("6. Extract")
+            print("7. Extract")
             print(" ")
             print("Q. Quit")
             print(" ")
@@ -379,6 +423,10 @@ class KextExtractor:
                 self.settings["kexts"] = kexts
                 self.flush_settings()
             elif menu == "6":
+                self.exclude = self.get_regex()
+                self.settings["exclude"] = None if self.exclude is None else self.exclude.pattern
+                self.flush_settings()
+            elif menu == "7":
                 if not efi:
                     efi = self.get_efi()
                 if not efi:
@@ -389,10 +437,10 @@ class KextExtractor:
                         continue
                     kexts = k
                 # Got folder and EFI - let's do something...
-                self.mount_and_copy(efi, kexts, False)
+                self.mount_and_copy(efi, kexts, False, self.exclude)
                 self.u.grab("Press [enter] to return...")
 
-    def quiet_copy(self, args, explicit_disk = False):
+    def quiet_copy(self, args, explicit_disk = False, exclude = None):
         # Iterate through the args
         func = self.d.get_identifier if explicit_disk else self.d.get_efi
         arg_pairs = zip(*[iter(args)]*2)
@@ -400,15 +448,17 @@ class KextExtractor:
             target = func(pair[1])
             if target:
                 try:
-                    self.mount_and_copy(target, pair[0], True)
+                    self.mount_and_copy(target, pair[0], True, exclude)
                 except Exception as e:
                     print(str(e))
 
 if __name__ == '__main__':
     # Setup the cli args
     parser = argparse.ArgumentParser(prog="KextExtractor.command", description="KextExtractor - a py script that extracts and updates kexts.")
+    parser.add_argument("kexts_and_disks",nargs="*", help="path pairs for source kexts and target disk (eg. kextpath1 disk1 kextpath2 disk2)")
     parser.add_argument("-d", "--explicit-disk", help="treat all mount points/identifiers explicitly without resolving to EFI", action="store_true")
-    parser.add_argument("kexts_and_disks",nargs="*")
+    parser.add_argument("-e", "--exclude", help="regex to exclude kexts by name matching (overrides settings.json, cli-only)")
+    parser.add_argument("-x", "--disable-exclude", help="disable regex name exclusions (overrides --exclude and settings.json, cli-only)", action="store_true")
 
     args = parser.parse_args()
 
@@ -419,6 +469,12 @@ if __name__ == '__main__':
 
     c = KextExtractor()
     if args.kexts_and_disks:
-        c.quiet_copy(args.kexts_and_disks, explicit_disk=args.explicit_disk)
+        regex = None
+        if not args.disable_exclude and args.exclude: # Attempt to compile the regex
+            try: regex = re.compile(args.exclude)
+            except:
+                print("Passed regex is invalid!")
+                exit(1)
+        c.quiet_copy(args.kexts_and_disks, explicit_disk=args.explicit_disk, exclude=regex)
     else:
         c.main()
