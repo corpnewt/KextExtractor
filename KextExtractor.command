@@ -371,7 +371,7 @@ class KextExtractor:
         if efi == "clover":
             efi = self.d.get_identifier(bdmesg.get_bootloader_uuid())
         elif efi == "boot":
-            efi = "/"
+            efi = self.d.get_efi("/")
         kexts = self.settings.get("kexts", None)
         while True:
             self.u.head("Kext Extractor")
