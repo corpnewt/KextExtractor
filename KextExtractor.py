@@ -196,7 +196,7 @@ class KextExtractor:
             # Let's iterate through the temp dir
             self.qprint("\n - Walking temp folder...",quiet)
             for path, subdirs, files in os.walk(temp):
-                if any(x.lower().endswith(".kext") for x in os.path.normpath(temp).split(os.path.sep)): continue
+                if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
                 for name in subdirs:
                     if name.lower().endswith(".kext"):
                         # Save it
@@ -204,7 +204,7 @@ class KextExtractor:
                         kexts.append(os.path.join(path, name))
         self.qprint("\n - Walking {}".format(package),quiet)
         for path, subdirs, files in os.walk(package):
-            if any(x.lower().endswith(".kext") for x in os.path.normpath(package).split(os.path.sep)): continue
+            if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
             for name in subdirs:
                 if name.lower().endswith(".kext"):
                     # Save it
