@@ -8,6 +8,7 @@ class KextExtractor:
         self.r  = run.Run()
         self.d  = disk.Disk()
         self.u  = utils.Utils("KextExtractor")
+        self.boot_manager = bdmesg.get_bootloader_uuid()
         self.clover = None
         self.efi    = None
         self.exclude = None
@@ -59,94 +60,93 @@ class KextExtractor:
         # Not found
         return None
 
-    def get_efi(self):
-        self.d.update()
-        clover = bdmesg.get_bootloader_uuid()
-        i = 0
-        disk_string = ""
-        if not self.settings.get("full", False):
-            clover_disk = self.d.get_parent(clover)
-            mounts = self.d.get_mounted_volume_dicts()
-            for d in mounts:
-                i += 1
-                disk_string += "{}. {} ({})".format(i, d["name"], d["identifier"])
-                if self.d.get_parent(d["identifier"]) == clover_disk:
-                # if d["disk_uuid"] == clover:
-                    disk_string += " *"
-                disk_string += "\n"
-        else:
-            mounts = self.d.get_disks_and_partitions_dict()
-            disks = mounts.keys()
-            for d in disks:
-                i += 1
-                disk_string+= "{}. {}:\n".format(i, d)
-                parts = mounts[d]["partitions"]
-                part_list = []
-                for p in parts:
-                    p_text = "        - {} ({})".format(p["name"], p["identifier"])
-                    if p["disk_uuid"] == clover:
-                        # Got Clover
-                        p_text += " *"
-                    part_list.append(p_text)
-                if len(part_list):
-                    disk_string += "\n".join(part_list) + "\n"
-        height = len(disk_string.split("\n"))+13
-        if height < 24:
-            height = 24
-        self.u.resize(80, height)
-        self.u.head()
-        print(" ")
-        print(disk_string)
-        if not self.settings.get("full", False):
-            print("S. Switch to Full Output")
-        else:
-            print("S. Switch to Slim Output")
-        print("B. Select the Boot Drive's EFI")
-        if clover:
-            print("C. Select the Booted Clover/OC's EFI")
-        print("")
-        print("M. Main")
-        print("Q. Quit")
-        print(" ")
-        print("(* denotes the booted Clover/OC)")
-
-        menu = self.u.grab("Pick the drive containing your EFI:  ")
-        if not len(menu):
-            return self.get_efi()
-        if menu.lower() == "q":
-            self.u.custom_quit()
-        elif menu.lower() == "m":
-            return None
-        elif menu.lower() == "s":
-            full = self.settings.get("full", False)
-            self.settings["full"] = not full
-            self.flush_settings()
-            return self.get_efi()
-        elif menu.lower() == "b":
-            return self.d.get_efi("/")
-        elif menu.lower() == "c" and clover:
-            return self.d.get_efi(clover)
-        try:
-            disk_iden = int(menu)
-            if not (disk_iden > 0 and disk_iden <= len(mounts)):
-                # out of range!
-                self.u.grab("Invalid disk!", timeout=3)
-                return self.get_efi()
-            if type(mounts) is list:
-                # We have the small list
-                disk = mounts[disk_iden-1]["identifier"]
+    def get_efi(self,allow_main=True):
+        while True:
+            self.d.update()
+            pad = 4
+            disk_string = "\n"
+            if not self.settings.get("full"):
+                boot_disk = self.d.get_parent(self.boot_manager)
+                mounts = self.d.get_mounted_volume_dicts()
+                for i,d in enumerate(mounts,start=1):
+                    disk_string += "{}. {} ({})".format(str(i).rjust(2), d["name"], d["identifier"])
+                    if boot_disk and self.d.get_parent(d["identifier"]) == boot_disk:
+                        disk_string += " *"
+                    disk_string += "\n"
             else:
-                # We have the dict
-                disk = mounts.keys()[disk_iden-1]
-        except:
-            disk = menu
-        iden = self.d.get_identifier(disk)
-        name = self.d.get_volume_name(disk)
-        if not iden:
-            self.u.grab("Invalid disk!", timeout=3)
-            return self.get_efi()
-        # Valid disk!
-        return self.d.get_efi(iden)
+                mounts = self.d.get_disks_and_partitions_dict()
+                disks = list(mounts)
+                for i,d in enumerate(disks,start=1):
+                    disk_string+= "{}. {}:\n".format(str(i).rjust(2),d)
+                    if mounts[d].get("scheme"):
+                        disk_string += "      {}\n".format(mounts[d]["scheme"])
+                    if mounts[d].get("physical_stores"):
+                        disk_string += "      Physical Store{} on {}\n".format(
+                            "" if len(mounts[d]["physical_stores"])==1 else "s",
+                            ", ".join(mounts[d]["physical_stores"])
+                        )
+                    parts = mounts[d]["partitions"]
+                    part_list = []
+                    for p in parts:
+                        name = "Container for {}".format(p["container_for"]) if "container_for" in p else p["name"]
+                        p_text = "        - {} ({})".format(name, p["identifier"])
+                        if self.boot_manager and p["disk_uuid"] == self.boot_manager:
+                            # Got boot manager
+                            p_text += " *"
+                        part_list.append(p_text)
+                    if len(part_list):
+                        disk_string += "\n".join(part_list) + "\n"
+            disk_string += "\nS. Switch to {} Output\n".format("Slim" if self.settings.get("full") else "Full")
+            disk_string += "B. Select the Boot Drive's EFI\n"
+            if self.boot_manager:
+                disk_string += "C. Select the Booted EFI (Clover/OC)\n"
+            disk_string += ("\nM. Main" if allow_main else "") + "\nQ. Quit\n"
+            if self.boot_manager:
+                disk_string += "\n(* denotes the booted EFI (Clover/OC)"
+            height = max(len(disk_string.split("\n"))+pad,24)
+            if self.settings.get("resize_window",True): self.u.resize(80,height)
+            self.u.head()
+            print(disk_string)
+            menu = self.u.grab("Pick the drive containing your EFI:  ")
+            if not len(menu):
+                continue
+            if menu.lower() == "q":
+                if self.settings.get("resize_window",True): self.u.resize(80,24)
+                self.u.custom_quit()
+            elif allow_main and menu.lower() == "m":
+                if self.settings.get("resize_window",True): self.u.resize(80,24)
+                return
+            elif menu.lower() == "s":
+                self.settings["full"] = not self.settings.get("full")
+                continue
+            elif menu.lower() == "b":
+                disk = "/"
+                iden = self.d.get_efi("/")
+            elif menu.lower() == "c" and self.boot_manager:
+                disk = self.boot_manager
+                iden = self.d.get_efi(self.boot_manager)
+            else:
+                try: disk = mounts[int(menu)-1]["identifier"] if isinstance(mounts,list) else list(mounts)[int(menu)-1]
+                except: disk = menu
+            if self.settings.get("resize_window",True): self.u.resize(80,24)
+            iden = self.d.get_identifier(disk)
+            if not iden:
+                self.u.head("Invalid Disk")
+                print("")
+                print("'{}' is not a valid disk!".format(disk))
+                print("")
+                self.u.grab("Returning in 3 seconds...", timeout=3)
+                continue
+            # Valid disk!
+            efi = self.d.get_efi(iden)
+            if not efi:
+                self.u.head("No EFI Partition")
+                print("")
+                print("There is no EFI partition associated with {}!".format(iden))
+                print("")
+                self.u.grab("Returning in 3 seconds...", timeout=3)
+                continue
+            return efi
 
     def qprint(self, message, quiet):
         if not quiet:
@@ -400,7 +400,8 @@ class KextExtractor:
             if menu == "q":
                 self.u.custom_quit()
             elif menu == "1":
-                efi = self.get_efi()
+                temp_efi = self.get_efi()
+                efi = temp_efi or efi
             elif menu == "2":
                 k = self.get_folder()
                 if not k:
