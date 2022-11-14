@@ -154,9 +154,13 @@ class KextExtractor:
 
     def mount_and_copy(self, disk = None, package = None, quiet = False, exclude = None, folder_path = None):
         # Mounts the passed disk and extracts the package target to the destination
+        if not quiet:
+            self.u.head("Extracting {} to {}...".format(os.path.basename(package), os.path.basename(folder_path) if folder_path else disk))
+            print("")
         if not package:
             print("No kext package passed!  Aborting...")
             return False
+        mounted = True # Default to avoid unmounting if not needed
         if not disk:
             if not folder_path:
                 print("No disk or folder path provided!  Aborting...")
@@ -190,19 +194,19 @@ class KextExtractor:
                 return False
         else:
             self.d.update()
-        if not quiet:
-            self.u.head("Extracting {} to {}...".format(os.path.basename(package), disk))
-            print("")
-        mounted = self.d.is_mounted(disk) if disk else True
-        # Mount the EFI if needed
-        if not mounted:
-            self.qprint("Mounting {}...".format(disk), quiet)
-            out = self.d.mount_partition(disk)
-            if not out[2] == 0:
-                print(out[1])
-                return False
-            self.qprint(out[0].strip("\n"), quiet)
-            self.qprint(" ", quiet)
+            mounted = self.d.is_mounted(disk)
+            # Mount the EFI if needed
+            if not mounted:
+                self.qprint("Mounting {}...".format(disk), quiet)
+                out = self.d.mount_partition(disk)
+                if not out[2] == 0:
+                    print(out[1])
+                    return False
+                self.qprint(out[0].strip("\n"), quiet)
+                self.qprint(" ", quiet)
+            mp = self.d.get_mount_point(disk)
+            clover_path = os.path.join(mp,"EFI","CLOVER")
+            oc_path     = os.path.join(mp,"EFI","OC")
         kexts = []
         temp = None
         # We need to parse some lists
@@ -300,6 +304,7 @@ class KextExtractor:
         if temp: shutil.rmtree(temp, ignore_errors=True)
         # Unmount if need be
         if not mounted:
+            self.qprint("Unmounting {}...\n".format(disk),quiet)
             self.d.unmount_partition(disk)
 
     def get_folder(self):
@@ -467,7 +472,6 @@ class KextExtractor:
                         continue
                     kexts = k
                 # Got folder and EFI - let's do something...
-                self.mount_and_copy(efi, kexts, False, self.exclude)
                 self.mount_and_copy(disk=efi,package=kexts,quiet=False,exclude=self.exclude)
                 self.u.grab("Press [enter] to return...")
 
