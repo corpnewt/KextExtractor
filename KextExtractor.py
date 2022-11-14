@@ -152,16 +152,48 @@ class KextExtractor:
         if not quiet:
             print(message)
 
-    def mount_and_copy(self, disk, package, quiet = False, exclude = None):
+    def mount_and_copy(self, disk = None, package = None, quiet = False, exclude = None, folder_path = None):
         # Mounts the passed disk and extracts the package target to the destination
-        self.d.update()
+        if not package:
+            print("No kext package passed!  Aborting...")
+            return False
+        if not disk:
+            if not folder_path:
+                print("No disk or folder path provided!  Aborting...")
+                return False
+            temp_path = self.u.check_path(folder_path)
+            if not temp_path:
+                print("{} was not found!  Aborting...")
+                return False
+            if not os.path.isdir(temp_path):
+                print("{} is not a directory!  Aborting...")
+                return False
+            folder_path = temp_path # Set the path explicitly
+            # Set our default paths
+            clover_path = oc_path = None
+            # Check if we have folder_path/EFI
+            if os.path.isdir(os.path.join(folder_path,"EFI")):
+                clover_path = os.path.join(folder_path,"EFI","CLOVER")
+                oc_path     = os.path.join(folder_path,"EFI","OC")
+            # Check for folder_path/CLOVER|OC
+            if os.path.isdir(os.path.join(folder_path,"CLOVER")):
+                clover_path = os.path.join(folder_path,"CLOVER")
+            if os.path.isdir(os.path.join(folder_path,"OC")):
+                oc_path     = os.path.join(folder_path,"OC")
+            # Check for folder_path/OpenCore.efi|Clover.efi
+            if os.path.isfile(os.path.join(folder_path,"Clover.efi")):
+                clover_path = folder_path
+            if os.path.isfile(os.path.join(folder_path,"OpenCore.efi")):
+                oc_path     = folder_path
+            if not clover_path and not oc_path:
+                print("Could not locate any valid Clover or OC install!  Aborting...")
+                return False
+        else:
+            self.d.update()
         if not quiet:
             self.u.head("Extracting {} to {}...".format(os.path.basename(package), disk))
             print("")
-        if self.d.is_mounted(disk):
-            mounted = True
-        else:
-            mounted = False
+        mounted = self.d.is_mounted(disk) if disk else True
         # Mount the EFI if needed
         if not mounted:
             self.qprint("Mounting {}...".format(disk), quiet)
@@ -171,8 +203,6 @@ class KextExtractor:
                 return False
             self.qprint(out[0].strip("\n"), quiet)
             self.qprint(" ", quiet)
-        # Make sure we have the right folders in there
-        mp = self.d.get_mount_point(disk)
         kexts = []
         temp = None
         # We need to parse some lists
@@ -216,9 +246,8 @@ class KextExtractor:
             if temp: shutil.rmtree(temp, ignore_errors=True)
             return
         self.qprint("", quiet)
-        clover_path = os.path.join(mp,"EFI","CLOVER")
-        oc_path = os.path.join(mp,"EFI","OC")
-        for clear,k_f in ((clover_path,os.path.join(clover_path,"kexts")), (oc_path,os.path.join(oc_path,"Kexts"))):
+        for clear,k_f in ((clover_path,os.path.join(clover_path,"kexts") if clover_path else None), (oc_path,os.path.join(oc_path,"Kexts") if oc_path else None)):
+            if not k_f: continue # Missing a path
             print("Checking for {}...".format(k_f))
             if not os.path.exists(k_f):
                 print(" - Not found!  Skipping...\n".format(k_f))
@@ -439,27 +468,33 @@ class KextExtractor:
                     kexts = k
                 # Got folder and EFI - let's do something...
                 self.mount_and_copy(efi, kexts, False, self.exclude)
+                self.mount_and_copy(disk=efi,package=kexts,quiet=False,exclude=self.exclude)
                 self.u.grab("Press [enter] to return...")
 
-    def quiet_copy(self, args, explicit_disk = False, exclude = None):
+    def quiet_copy(self, args, explicit_disk = False, exclude = None, folder_path = None, quiet = True):
         # Iterate through the args
         func = self.d.get_identifier if explicit_disk else self.d.get_efi
         arg_pairs = zip(*[iter(args)]*2)
         for pair in arg_pairs:
-            target = func(pair[1])
-            if target:
+            disk = folder_path = None
+            if pair[1].lower().startswith("f="):
+                folder_path = pair[1][2:]
+            else:
+                disk = func(pair[1])
+            if disk or folder_path:
                 try:
-                    self.mount_and_copy(target, pair[0], True, exclude)
+                    self.mount_and_copy(disk=disk,package=pair[0],quiet=quiet,exclude=exclude,folder_path=folder_path)
                 except Exception as e:
                     print(str(e))
 
 if __name__ == '__main__':
     # Setup the cli args
     parser = argparse.ArgumentParser(prog="KextExtractor.command", description="KextExtractor - a py script that extracts and updates kexts.")
-    parser.add_argument("kexts_and_disks",nargs="*", help="path pairs for source kexts and target disk (eg. kextpath1 disk1 kextpath2 disk2)")
+    parser.add_argument("kexts_and_disks",nargs="*", help="path pairs for source kexts and target disk - can also take f=/path/to/EFI instead of a disk (eg. kextpath1 disk1 kextpath2 disk2 kextpath3 f=/folder/path1)")
     parser.add_argument("-d", "--explicit-disk", help="treat all mount points/identifiers explicitly without resolving to EFI", action="store_true")
     parser.add_argument("-e", "--exclude", help="regex to exclude kexts by name matching (overrides settings.json, cli-only)")
     parser.add_argument("-x", "--disable-exclude", help="disable regex name exclusions (overrides --exclude and settings.json, cli-only)", action="store_true")
+    parser.add_argument("-v", "--verbose", help="Uses verbose output instead of quiet", action="store_true")
 
     args = parser.parse_args()
 
@@ -479,6 +514,6 @@ if __name__ == '__main__':
                 exit(1)
         else: # Fall back on the original value
             regex = c.exclude
-        c.quiet_copy(args.kexts_and_disks, explicit_disk=args.explicit_disk, exclude=regex)
+        c.quiet_copy(args.kexts_and_disks,explicit_disk=args.explicit_disk,exclude=regex,quiet=not args.verbose)
     else:
         c.main()
