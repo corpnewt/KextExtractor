@@ -69,7 +69,7 @@ class KextExtractor:
                 boot_disk = self.d.get_parent(self.boot_manager)
                 mounts = self.d.get_mounted_volume_dicts()
                 for i,d in enumerate(mounts,start=1):
-                    disk_string += "{}. {} ({})".format(str(i).rjust(2), d["name"], d["identifier"])
+                    disk_string += "{}. {} | {} | {} ({})".format(str(i).rjust(2), d["name"], d["size"], d["type"], d["identifier"])
                     if boot_disk and self.d.get_parent(d["identifier"]) == boot_disk:
                         disk_string += " *"
                     disk_string += "\n"
@@ -77,7 +77,7 @@ class KextExtractor:
                 mounts = self.d.get_disks_and_partitions_dict()
                 disks = list(mounts)
                 for i,d in enumerate(disks,start=1):
-                    disk_string+= "{}. {}:\n".format(str(i).rjust(2),d)
+                    disk_string+= "{}. {} ({}):\n".format(str(i).rjust(2),d,mounts[d]["size"])
                     if mounts[d].get("scheme"):
                         disk_string += "      {}\n".format(mounts[d]["scheme"])
                     if mounts[d].get("physical_stores"):
@@ -89,7 +89,7 @@ class KextExtractor:
                     part_list = []
                     for p in parts:
                         name = "Container for {}".format(p["container_for"]) if "container_for" in p else p["name"]
-                        p_text = "        - {} ({})".format(name, p["identifier"])
+                        p_text = "        - {} | {} | {} ({})".format(name, p["size"], p["type"], p["identifier"])
                         if self.boot_manager and p["disk_uuid"] == self.boot_manager:
                             # Got boot manager
                             p_text += " *"
@@ -135,7 +135,7 @@ class KextExtractor:
                 print("")
                 print("'{}' is not a valid disk!".format(disk))
                 print("")
-                self.u.grab("Returning in 3 seconds...", timeout=3)
+                self.u.grab("Returning in 5 seconds...", timeout=5)
                 continue
             # Valid disk!
             efi = self.d.get_efi(iden)
@@ -144,7 +144,7 @@ class KextExtractor:
                 print("")
                 print("There is no EFI partition associated with {}!".format(iden))
                 print("")
-                self.u.grab("Returning in 3 seconds...", timeout=3)
+                self.u.grab("Returning in 5 seconds...", timeout=5)
                 continue
             return efi
 
