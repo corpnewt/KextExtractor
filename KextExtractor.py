@@ -72,15 +72,15 @@ class KextExtractor:
                 name_pad = size_pad = type_pad = 0
                 index_pad = len(str(len(mounts)))
                 for x in mounts:
-                    if len(x["name"]) > name_pad: name_pad = len(x["name"])
+                    if len(str(x["name"])) > name_pad: name_pad = len(str(x["name"]))
                     if len(x["size"]) > size_pad: size_pad = len(x["size"])
-                    if len(x["readable_type"]) > type_pad: type_pad = len(x["readable_type"])
+                    if len(str(x["readable_type"])) > type_pad: type_pad = len(str(x["readable_type"]))
                 for i,d in enumerate(mounts,start=1):
                     disk_string += "{}. {} | {} | {} | {}".format(
                         str(i).rjust(index_pad),
-                        d["name"].ljust(name_pad),
+                        str(d["name"]).ljust(name_pad),
                         d["size"].rjust(size_pad),
-                        d["readable_type"].ljust(type_pad),
+                        str(d["readable_type"]).ljust(type_pad),
                         d["identifier"]
                     )
                     if boot_disk and self.d.get_parent(d["identifier"]) == boot_disk:
@@ -97,7 +97,7 @@ class KextExtractor:
                         name = "Container for {}".format(x["container_for"]) if "container_for" in x else str(x["name"])
                         if len(name) > name_pad: name_pad = len(name)
                         if len(x["size"]) > size_pad: size_pad = len(x["size"])
-                        if len(x["readable_type"]) > type_pad: type_pad = len(x["readable_type"])
+                        if len(str(x["readable_type"])) > type_pad: type_pad = len(str(x["readable_type"]))
                 for i,d in enumerate(disks,start=1):
                     disk_string+= "{}. {} ({}):\n".format(
                         str(i).rjust(index_pad),
@@ -118,7 +118,7 @@ class KextExtractor:
                         p_text = "        - {} | {} | {} ({})".format(
                             str(name).ljust(name_pad),
                             p["size"].rjust(size_pad),
-                            p["readable_type"].ljust(type_pad),
+                            str(p["readable_type"]).ljust(type_pad),
                             p["identifier"]
                         )
                         if self.boot_manager and p["disk_uuid"] == self.boot_manager:
