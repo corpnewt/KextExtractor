@@ -153,10 +153,8 @@ class KextExtractor:
                 continue
             elif menu.lower() == "b":
                 disk = "/"
-                iden = self.d.get_efi("/")
             elif menu.lower() == "c" and self.boot_manager:
                 disk = self.boot_manager
-                iden = self.d.get_efi(self.boot_manager)
             else:
                 try: disk = mounts[int(menu)-1]["identifier"] if isinstance(mounts,list) else list(mounts)[int(menu)-1]
                 except: disk = menu
@@ -481,9 +479,9 @@ class KextExtractor:
                 efi = self.default_disk()
                 self.settings["efi"] = efi
                 if efi == "clover":
-                    efi = self.d.get_identifier(bdmesg.get_bootloader_uuid())
+                    efi = self.d.get_efi(bdmesg.get_bootloader_uuid())
                 elif efi == "boot":
-                    efi = self.d.get_identifier("/")
+                    efi = self.d.get_efi("/")
                 self.flush_settings()
             elif menu == "5":
                 kexts = self.default_folder()
