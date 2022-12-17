@@ -479,7 +479,7 @@ class KextExtractor:
                 efi = self.default_disk()
                 self.settings["efi"] = efi
                 if efi == "clover":
-                    efi = self.d.get_efi(bdmesg.get_bootloader_uuid())
+                    efi = self.d.get_identifier(bdmesg.get_bootloader_uuid())
                 elif efi == "boot":
                     efi = self.d.get_efi("/")
                 self.flush_settings()
