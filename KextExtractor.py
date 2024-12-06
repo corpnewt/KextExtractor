@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 # 0.0.0
-from Scripts import *
+from Scripts import bdmesg, disk, plist, run, utils
 import os, tempfile, datetime, shutil, time, plistlib, json, sys, glob, argparse, re
 
 class KextExtractor:
     def __init__(self, **kwargs):
-        self.r  = run.Run()
-        self.d  = disk.Disk()
-        self.u  = utils.Utils("KextExtractor")
+        self.r = run.Run()
+        self.d = disk.Disk()
+        self.u = utils.Utils("KextExtractor")
         self.boot_manager = bdmesg.get_bootloader_uuid()
         self.clover = None
-        self.efi    = None
+        self.efi = None
         self.exclude = None
         # Get the tools we need
         self.script_folder = "Scripts"
@@ -182,6 +182,28 @@ class KextExtractor:
         if not quiet:
             print(message)
 
+    def get_kext_version(self, kext_path):
+        # Walk the contents of the passed kext path and look for an Info.plist.
+        # Pull the CFBundleShortVersionString, if any - fall back to the
+        # CFBundleVersion otherwise.
+        plist_full_path = version = None
+        for kpath, ksubdirs, kfiles in os.walk(kext_path):
+            for kname in kfiles:
+                if kname.lower() == "info.plist":
+                    plist_full_path = os.path.join(kpath,kname)
+                    break
+            if plist_full_path: break # Found it - break
+        if plist_full_path:
+            # Try to parse the plist
+            try:
+                with open(plist_full_path,"rb") as f:
+                    plist_data = plist.load(f)
+                assert isinstance(plist_data,dict)
+                version = plist_data.get("CFBundleShortVersionString",plist_data.get("CFBundleVersion"))
+            except Exception:
+                pass
+        return version or "?.?.?"
+
     def mount_and_copy(self, disk = None, package = None, quiet = False, exclude = None, folder_path = None):
         # Mounts the passed disk and extracts the package target to the destination
         if not quiet:
@@ -280,7 +302,8 @@ class KextExtractor:
             if temp: shutil.rmtree(temp, ignore_errors=True)
             return
         self.qprint("", quiet)
-        for clear,k_f in ((clover_path,os.path.join(clover_path,"kexts") if clover_path else None), (oc_path,os.path.join(oc_path,"Kexts") if oc_path else None)):
+        for clear,k_f in ((clover_path,os.path.join(clover_path,"kexts") if clover_path else None),\
+        (oc_path,os.path.join(oc_path,"Kexts") if oc_path else None)):
             if not k_f: continue # Missing a path
             print("Checking for {}...".format(k_f))
             if not os.path.exists(k_f):
@@ -293,19 +316,36 @@ class KextExtractor:
                 if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
                 for name in subdirs:
                     if name.lower().endswith(".kext"):
-                        if not name.lower() in installed_kexts: installed_kexts[name.lower()] = []
+                        if not name.lower() in installed_kexts:
+                            installed_kexts[name.lower()] = []
                         installed_kexts[name.lower()].append(os.path.join(path, name))
             # Let's walk our new kexts and update as we go
             for k in sorted(kexts, key=lambda x: os.path.basename(x).lower()):
+                new_version = self.get_kext_version(k)
                 k_name = os.path.basename(k)
-                if not k_name.lower() in installed_kexts: continue
+                if not k_name.lower() in installed_kexts:
+                    continue
                 for path in installed_kexts[k_name.lower()]:
+                    old_version = self.get_kext_version(path)
                     dir_path = os.path.dirname(path)[len(clear):].lstrip("/")
                     if exclude and exclude.match(k_name):
                         # Excluded - print that we're skipping it
-                        print(" --> Found {} in {} - excluded per regex...".format(k_name,dir_path))
+                        print(" --> Excluding {}/{} ({}) per regex...".format(
+                            dir_path,
+                            k_name,
+                            old_version
+                        ))
                         continue
-                    print(" --> Found {} in {} - replacing...".format(k_name,dir_path))
+                    # Format the version string to show changes
+                    if old_version == new_version:
+                        version_string = old_version
+                    else:
+                        version_string = "{} -> {}".format(old_version,new_version)
+                    print(" --> Replacing {}/{} ({})...".format(
+                        dir_path,
+                        k_name,
+                        version_string
+                    ))
                     if path.lower() == k.lower():
                         print(" ----> Source and target paths are the same - skipping!")
                         continue
@@ -314,19 +354,21 @@ class KextExtractor:
                         print(" ----> Archiving...")
                         cwd = os.getcwd()
                         os.chdir(os.path.dirname(path))
-                        zip_name = "{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(k_name, datetime.datetime.now())
+                        zip_name = "{}-{}-Backup-{:%Y-%m-%d %H.%M.%S}.zip".format(k_name,old_version,datetime.datetime.now())
                         args = ["zip","-r",zip_name,os.path.basename(path)]
                         out = self.r.run({"args":args, "stream":False})
                         os.chdir(cwd)
                         if not out[2] == 0:
-                            print(" ------> Couldn't backup {} - skipping!".format(k_name))
+                            print(" ------> Couldn't backup {} ({}) - skipping!".format(k_name,old_version))
                             continue
                     # Replace the kext
-                    try: shutil.rmtree(path, ignore_errors=True)
+                    try:
+                        shutil.rmtree(path,ignore_errors=True)
                     except:
                         print(" ----> Could not remove target kext!")
                         continue
-                    try: shutil.copytree(k,path)
+                    try:
+                        shutil.copytree(k,path)
                     except:
                         print(" ----> Failed to copy new kext!")
                         continue
