@@ -182,6 +182,11 @@ class KextExtractor:
         if not quiet:
             print(message)
 
+    def path_is_valid(self, test_path):
+        # Check if any of the path elements end with .kext, or equal __MACOSX
+        # as we don't want to find sub-kexts, extended attributes, or similar.
+        return not any(x.lower().endswith(".kext") or x == "__MACOSX" for x in os.path.normpath(test_path).split(os.path.sep))
+
     def get_kext_version(self, kext_path):
         # Walk the contents of the passed kext path and look for an Info.plist.
         # Pull the CFBundleShortVersionString, if any - fall back to the
@@ -282,7 +287,8 @@ class KextExtractor:
             # Let's iterate through the temp dir
             self.qprint("\n - Walking temp folder...",quiet)
             for path, subdirs, files in os.walk(temp):
-                if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
+                if not self.path_is_valid(path):
+                    continue
                 for name in subdirs:
                     if name.lower().endswith(".kext"):
                         # Save it
@@ -290,7 +296,8 @@ class KextExtractor:
                         kexts.append(os.path.join(path, name))
         self.qprint("\n - Walking {}".format(package),quiet)
         for path, subdirs, files in os.walk(package):
-            if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
+            if not self.path_is_valid(path):
+                continue
             for name in subdirs:
                 if name.lower().endswith(".kext"):
                     # Save it
@@ -313,7 +320,8 @@ class KextExtractor:
             # Let's get a list of installed kexts - we'll want to omit any nested plugins though
             installed_kexts = {}
             for path, subdirs, files in os.walk(k_f):
-                if any(x.lower().endswith(".kext") for x in os.path.normpath(path).split(os.path.sep)): continue
+                if not self.path_is_valid(path):
+                    continue
                 for name in subdirs:
                     if name.lower().endswith(".kext"):
                         if not name.lower() in installed_kexts:
