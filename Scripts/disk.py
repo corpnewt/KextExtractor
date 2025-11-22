@@ -384,7 +384,7 @@ class Disk:
         disk_dict = disk_dict or self.disks # Normalize the dict
         disk = disk[6:] if disk.lower().startswith("/dev/rdisk") else disk[5:] if disk.lower().startswith("/dev/disk") else disk
         if disk.lower() in disk_dict.get("AllDisks",[]): return disk
-        for d in disk_dict.get("AllDisksAndPartitions", []):
+        for d in disk_dict.get("AllDisksAndPartitions",[]):
             # Check the parent disk
             if any((disk.lower()==d.get(x,"").lower() for x in ("DAMediaBSDName","DAVolumeName","DAVolumeUUID","DAMediaUUID","DAVolumePath"))):
                 return d.get("DAMediaBSDName")
@@ -439,6 +439,8 @@ class Disk:
         # Walk AllDisksAndPartitions, and return the first hit
         for d in (disk_dict or self.disks).get("AllDisksAndPartitions",[]):
             d_ident = d.get("DAMediaBSDName")
+            if not d_ident:
+                continue # Did not resolve
             if d_ident == disk:
                 return d # Got the disk
             elif d_ident == parent:
@@ -457,11 +459,6 @@ class Disk:
                 # Use the GUID instead of media name - as that can vary
                 if part.get("DAMediaContent","").upper() in self.efi_guids:
                     efis.append(part["DAMediaBSDName"])
-                # Normalize case for the DAMediaName;
-                # macOS disks: "EFI System Partition", Windows disks: "EFI system partition"
-                # Maybe use this approach as a fallback at some point - but for now, just use the GUID
-                # if part.get("DAMediaName").lower() == "efi system partition":
-                #     efis.append(part["DAMediaBSDName"])
         return efis
 
     def get_efi(self, disk = None, disk_dict = None):
@@ -486,7 +483,7 @@ class Disk:
         return guid
 
     def get_volume_type(self, disk = None, disk_dict = None):
-        # Returns teh DAVolumeType or DAVolumeKind of the passed disk if any
+        # Returns the DAVolumeType or DAVolumeKind of the passed disk if any
         disk = self.get_disk(disk,disk_dict=disk_dict)
         if not disk: return
         if "DAVolumeType" in disk: return disk["DAVolumeType"]
@@ -522,7 +519,7 @@ class Disk:
     def get_mounted_volume_dicts(self, disk_dict = None):
         # Returns a list of dicts of name, identifier, mount point dicts
         vol_list = []
-        for v in (disk_dict or self.disks).get("MountPointsFromDisks"):
+        for v in (disk_dict or self.disks).get("MountPointsFromDisks",[]):
             i = self.get_disk(v,disk_dict=disk_dict)
             if not i: continue # Skip - as it didn't resolve
             mount_point = self.get_mount_point(i,disk_dict=disk_dict)
@@ -570,7 +567,7 @@ class Disk:
         #     } 
         #  ] } }
         disks = {}
-        for d in sorted((disk_dict or self.disks).get("AllDisksAndPartitions"),key=lambda x:x.get("DAMediaBSDName")):
+        for d in sorted((disk_dict or self.disks).get("AllDisksAndPartitions",[]),key=lambda x:x.get("DAMediaBSDName")):
             if not "DAMediaBSDName" in d: continue # Malformed
             parent = d["DAMediaBSDName"]
             disks[parent] = {"partitions":[]}
@@ -745,22 +742,29 @@ if __name__ == '__main__':
     mount_list = []
     needs_sudo = d.needs_sudo()
     for x in args:
-        name = d.get_volume_name(x)
-        if not name: name = "Untitled"
+        name = d.get_volume_name(x) or "Untitled"
         name = name.replace('"','\\"') # Escape double quotes in names
         diskdump = d.diskdump.replace('"','\\\\\\"') # Escape double quotes in names
-        efi = d.get_efi(x)
-        if efi: mount_list.append((efi,name,d.is_mounted(efi),"\\\"{}\\\" mount {}".format(diskdump,efi)))
-        else: errors.append("'{}' has no ESP.".format(name))
+        efi = d.get_efis(x)
+        if efi: 
+            for i,e in enumerate(efi):
+                mount_list.append((
+                    e,
+                    name if i == 0 else "", # Omit the name after the first ESP
+                    d.is_mounted(e),
+                    "\\\"{}\\\" mount {}".format(diskdump,e)
+                ))
+        else:
+            errors.append("'{}' has no ESP.".format(name))
     if mount_list:
         # We have something to mount
         efis =  [x[-1] for x in mount_list if not x[2]] # Only mount those that aren't mounted
-        names = [x[1]  for x in mount_list if not x[2]]
+        names = [x[1]  for x in mount_list if x[1] and not x[2]]
         if efis: # We have something to mount here
             command = "do shell script \"{}\" with prompt \"MountEFI would like to mount the ESP{} on {}\"{}".format(
                 "; ".join(efis),
-                "s" if len(names) > 1 else "",
-                ", ".join(names),
+                "s" if len(efis) > 1 else "",
+                names[0] if len(names) == 1 else " and ".join([", ".join(names[:-1]),names[-1]]),
                 " with administrator privileges" if needs_sudo else "")
             o,e,r = d.r.run({"args":["osascript","-e",command]})
             if r > 0 and len(e.strip()) and e.strip().lower().endswith("(-128)"): exit() # User canceled, bail
